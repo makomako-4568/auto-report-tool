@@ -3,555 +3,669 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>週次報告自動化ツール — デモ</title>
+  <title>週次タスク整理ダッシュボード — デモ</title>
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
       theme: {
         extend: {
           colors: {
-            navy: { DEFAULT: '#1e3a5f', light: '#2a4f7c' }
+            navy: '#1e3a5f',
           }
         }
       }
     }
   </script>
   <style>
-    body { font-family: 'Hiragino Kaku Gothic ProN', 'Meiryo', 'Yu Gothic', sans-serif; }
-
-    .tag-wrap {
-      display: flex; flex-wrap: wrap; gap: 6px; align-items: center;
-      padding: 6px 8px; border: 1px solid #e2e8f0; border-radius: 8px;
-      background: #f8fafc; min-height: 44px; cursor: text;
-      transition: border-color .2s, box-shadow .2s;
-    }
-    .tag-wrap:focus-within {
-      border-color: #2a4f7c;
-      box-shadow: 0 0 0 3px rgba(42,79,124,.12);
-      background: #fff;
-    }
-    .tag-text-input {
-      border: none; outline: none; background: transparent;
-      font-size: 13px; color: #1e293b; font-family: inherit;
-      min-width: 120px; flex: 1; padding: 2px 4px;
-    }
-    .tag-text-input::placeholder { color: #94a3b8; }
-
-    .spinner {
-      width: 48px; height: 48px;
-      border: 4px solid #e2e8f0; border-top-color: #1e3a5f;
-      border-radius: 50%; animation: spin .85s linear infinite;
-      margin: 0 auto;
-    }
+    body { font-family: 'Hiragino Sans', 'Meiryo', sans-serif; }
     .step-spinner {
-      width: 18px; height: 18px; flex-shrink: 0;
-      border: 2px solid #bfdbfe; border-top-color: #2a4f7c;
-      border-radius: 50%; animation: spin .75s linear infinite;
+      width: 14px; height: 14px; flex-shrink: 0;
+      border: 2px solid #93c5fd; border-top-color: #2563eb;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
     }
     @keyframes spin { to { transform: rotate(360deg); } }
-
-    .toast-base {
-      position: fixed; bottom: 80px; left: 50%;
-      transform: translateX(-50%) translateY(16px);
-      opacity: 0; pointer-events: none;
-      transition: all .3s ease; z-index: 300;
-      white-space: normal; max-width: 90vw; text-align: center;
+    .priority-badge { @apply text-[10px] font-bold px-2 py-0.5 rounded-full; }
+    .toast {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      background: #1e293b; color: #fff; padding: 10px 20px;
+      border-radius: 8px; font-size: 13px; opacity: 0;
+      transition: opacity 0.3s; pointer-events: none; z-index: 9999; white-space: nowrap;
     }
-    .toast-base.show {
-      transform: translateX(-50%) translateY(0); opacity: 1;
-    }
-
-    ::-webkit-scrollbar { width: 5px; }
-    ::-webkit-scrollbar-track { background: transparent; }
-    ::-webkit-scrollbar-thumb { background: #cbd5e1; border-radius: 3px; }
+    .toast.show { opacity: 1; }
+    .card-hover { transition: box-shadow 0.15s, transform 0.15s; }
+    .card-hover:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.10); transform: translateY(-1px); }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 h-screen flex flex-col overflow-hidden">
+<body class="bg-slate-100 min-h-screen flex flex-col">
 
-<!-- ════════════════════════
-     デモバナー（公開用）
-════════════════════════ -->
 <div class="bg-amber-400 text-amber-900 text-xs font-bold text-center py-2 px-4 flex-shrink-0 flex items-center justify-center gap-2">
   <span>⚠</span>
   <span>これはUIサンプルデモです。外部APIへの接続はなく、実データは送受信されません。</span>
   <span>⚠</span>
 </div>
 
-<!-- ════════════════════════
-     HEADER
-════════════════════════ -->
-<header class="bg-navy flex items-center justify-between px-6 h-14 flex-shrink-0 shadow-md z-10">
+<!-- ════════════════ HEADER ════════════════ -->
+<header class="bg-navy text-white px-5 py-3 flex items-center justify-between flex-shrink-0 shadow-md">
   <div class="flex items-center gap-3">
-    <div class="w-8 h-8 rounded-lg bg-white/10 flex items-center justify-center text-base">📋</div>
-    <span class="text-white font-bold text-base tracking-wide">自動報告ツール</span>
-    <span id="headerSubtitle" class="hidden text-xs text-white/60 bg-white/10 px-2.5 py-1 rounded-full"></span>
+    <span class="text-lg font-bold tracking-wide">📋 タスク整理ダッシュボード</span>
+    <span id="headerWeek" class="hidden text-sm text-white/60"></span>
   </div>
-  <div class="flex items-center gap-2">
-    <button id="headerCollectBtn" onclick="startCollect()"
-      class="hidden items-center gap-1.5 text-white text-xs font-bold px-3 py-1.5 rounded-md bg-green-600 hover:bg-green-700 border border-green-700 transition disabled:opacity-50 disabled:cursor-not-allowed">
-      ▶ 再収集
-    </button>
-    <button onclick="openSettings()"
-      class="flex items-center gap-1.5 text-white text-xs font-semibold px-3 py-1.5 rounded-md bg-white/10 hover:bg-white/20 border border-white/20 transition">
-      ⚙ 設定
-    </button>
-  </div>
+  <button id="headerCollectBtn"
+    onclick="startCollect()"
+    class="hidden items-center gap-2 bg-emerald-500 hover:bg-emerald-400 text-white text-sm font-semibold px-4 py-1.5 rounded-lg transition">
+    ▶ 再収集
+  </button>
 </header>
 
-<!-- ════════════════════════
-     PAGE 1 — 収集待機
-════════════════════════ -->
-<div id="pageStandby" class="page flex flex-1 items-center justify-center bg-slate-100 overflow-y-auto py-6">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-lg overflow-hidden">
+<!-- ════════════════ PAGE: STANDBY ════════════════ -->
+<div id="pageStandby" class="flex flex-1 flex-col items-center justify-center gap-8 p-8">
 
-    <!-- カードヘッダー -->
-    <div class="bg-gradient-to-br from-navy to-[#2d5fa8] px-8 pt-8 pb-7 text-center text-white">
-      <div class="w-14 h-14 rounded-2xl bg-white/15 flex items-center justify-center text-3xl mx-auto mb-4">📊</div>
-      <h1 class="text-xl font-bold mb-2">週次進捗レポート 収集・生成</h1>
-      <p class="text-sm text-white/70 leading-relaxed">Redmine・OneNoteからデータを収集し、<br>Claude AIが報告文を自動生成します</p>
+  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md flex flex-col gap-6">
+    <div class="text-center">
+      <div class="text-4xl mb-3">📋</div>
+      <h1 class="text-xl font-bold text-slate-800">週次タスク整理</h1>
+      <p class="text-sm text-slate-500 mt-1">Redmine・OneNote・メールを収集して<br>今週やるべきことをAIが整理します</p>
     </div>
 
-    <div class="px-7 py-6 flex flex-col gap-4">
-
-      <!-- Redmine -->
-      <div class="flex flex-col gap-1.5">
-        <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-          <span class="w-4 h-4 rounded bg-red-600 text-white flex items-center justify-center text-[9px] font-black">R</span>
-          Redmine プロジェクト
-          <span class="text-slate-300 font-normal normal-case tracking-normal">（複数可）</span>
-        </label>
-        <div class="tag-wrap" id="redmineTagWrap" onclick="focusTagInput('redmineTagInput')">
-          <input type="text" id="redmineTagInput" class="tag-text-input"
-                 placeholder="プロジェクト名を入力してEnter"
-                 onkeydown="handleTagKey(event,'redmine')" />
-        </div>
+    <!-- 対象週 -->
+    <div class="flex items-center justify-between bg-slate-50 rounded-xl px-4 py-3 border border-slate-200">
+      <button onclick="changeWeek(-1)" class="text-slate-400 hover:text-slate-700 text-lg px-2">‹</button>
+      <div class="text-center">
+        <div class="text-[11px] text-slate-400 mb-0.5">対象週</div>
+        <div id="weekLabel" class="text-sm font-semibold text-slate-700"></div>
       </div>
-
-      <!-- OneNote -->
-      <div class="flex flex-col gap-1.5">
-        <label class="flex items-center gap-1.5 text-[11px] font-bold text-slate-400 uppercase tracking-widest">
-          <span class="w-4 h-4 rounded bg-purple-700 text-white flex items-center justify-center text-[9px] font-black">N</span>
-          OneNote ノートブック
-          <span class="text-slate-300 font-normal normal-case tracking-normal">（複数可）</span>
-        </label>
-        <div class="tag-wrap" id="oneNoteTagWrap" onclick="focusTagInput('oneNoteTagInput')">
-          <input type="text" id="oneNoteTagInput" class="tag-text-input"
-                 placeholder="ノートブック名を入力してEnter"
-                 onkeydown="handleTagKey(event,'onenote')" />
-        </div>
-      </div>
-
-      <!-- メールアドレス -->
-      <div class="flex flex-col gap-1.5">
-        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">✉ 上司のメールアドレス</label>
-        <div class="flex gap-2 items-center">
-          <input type="text" id="bossEmailPrefix" value="boss.name" placeholder="boss.name"
-            class="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:border-navy-light focus:ring-2 focus:ring-navy/10 focus:bg-white transition" />
-          <span id="domainDisplay" class="text-sm text-slate-400 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5 whitespace-nowrap">@company.co.jp</span>
-        </div>
-      </div>
-
-      <!-- メール件名 -->
-      <div class="flex flex-col gap-1.5">
-        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">📩 トリガーメール件名</label>
-        <input type="text" id="emailSubject" value="課週間ミーティング（書面）" placeholder="例: 課週間ミーティング（書面）"
-          class="border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:border-navy-light focus:ring-2 focus:ring-navy/10 focus:bg-white transition" />
-        <p class="text-[11px] text-slate-400">前方一致で検索します。末尾の日付部分は自動マッチ</p>
-      </div>
-
-      <div class="h-px bg-slate-100 my-1"></div>
-
-      <!-- 週ナビ -->
-      <div class="flex items-center gap-2 bg-slate-50 border border-slate-200 rounded-lg px-4 py-3">
-        <span class="text-xs font-semibold text-slate-400 whitespace-nowrap">対象週：</span>
-        <button onclick="changeWeek(-1)"
-          class="w-7 h-7 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-400 hover:text-slate-700 hover:border-slate-300 transition text-sm">‹</button>
-        <span id="weekRangeDisplay" class="flex-1 text-sm font-bold text-slate-700 text-center"></span>
-        <button onclick="changeWeek(1)"
-          class="w-7 h-7 flex items-center justify-center rounded border border-slate-200 bg-white text-slate-400 hover:text-slate-700 hover:border-slate-300 transition text-sm">›</button>
-      </div>
-
-      <!-- 収集ボタン -->
-      <button id="collectBtn" onclick="startCollect()"
-        class="w-full bg-green-600 hover:bg-green-700 active:scale-[.99] text-white font-bold text-base py-4 rounded-xl shadow-lg shadow-green-600/25 hover:shadow-green-600/35 transition-all flex items-center justify-center gap-2.5 tracking-wide disabled:opacity-50 disabled:cursor-not-allowed">
-        <span id="collectBtnIcon">▶</span>
-        <span id="collectBtnLabel">収集を開始する</span>
-      </button>
-
-      <!-- ソースチップ -->
-      <div class="flex gap-2 justify-center pt-1">
-        <span class="text-[11px] font-semibold bg-red-50 text-red-700 px-3 py-1 rounded-full">■ Redmine</span>
-        <span class="text-[11px] font-semibold bg-purple-50 text-purple-700 px-3 py-1 rounded-full">■ OneNote</span>
-        <span class="text-[11px] font-semibold bg-blue-50 text-blue-700 px-3 py-1 rounded-full">◆ Claude AI</span>
-      </div>
-
-    </div>
-  </div>
-</div>
-
-<!-- ════════════════════════
-     PAGE 2 — 収集中
-════════════════════════ -->
-<div id="pageLoading" class="page hidden flex-1 items-center justify-center bg-slate-100">
-  <div class="bg-white rounded-2xl shadow-xl w-full max-w-md p-10 text-center">
-    <div class="spinner mb-8"></div>
-    <h2 class="text-lg font-bold text-slate-800 mb-1">データを収集しています</h2>
-    <p id="loadingWeekLabel" class="text-sm text-slate-400 mb-8"></p>
-
-    <div id="stepsContainer" class="flex flex-col gap-3 text-left mb-8">
-      <!-- JS で動的生成 -->
+      <button onclick="changeWeek(1)" id="nextWeekBtn" class="text-slate-400 hover:text-slate-700 text-lg px-2">›</button>
     </div>
 
-    <!-- 中断ボタン（修正①） -->
-    <button onclick="cancelCollect()"
-      class="text-sm text-slate-400 hover:text-slate-600 border border-slate-200 hover:border-slate-300 rounded-lg px-5 py-2 transition">
-      収集を中断する
-    </button>
-  </div>
-</div>
-
-<!-- ════════════════════════
-     PAGE 3 — レビュー
-════════════════════════ -->
-<div id="pageReview" class="page hidden flex-col flex-1 overflow-hidden">
-
-  <div class="flex flex-1 overflow-hidden">
-
-    <!-- LEFT: 収集データ -->
-    <div class="w-[38%] min-w-[280px] bg-slate-100 border-r border-slate-200 overflow-y-auto p-3.5 flex flex-col gap-3">
-
-      <!-- 対象週バナー -->
-      <div class="bg-navy/5 border border-navy/10 rounded-lg px-3 py-2 flex items-center gap-2">
-        <span class="text-xs font-semibold text-navy/70">対象週</span>
-        <span id="reviewWeekLabel" class="text-xs font-bold text-navy flex-1"></span>
-      </div>
-
-      <!-- Redmine -->
-      <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div class="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
-          <span class="w-4 h-4 rounded bg-red-600 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">R</span>
-          <span class="text-xs font-bold text-slate-700">Redmine チケット</span>
-          <span class="ml-auto text-[11px] text-slate-400 font-normal">チーム全員</span>
-        </div>
-        <div class="p-3">
-          <div class="grid grid-cols-2 gap-2">
-            <div class="border border-slate-100 rounded-md p-2 bg-slate-50">
-              <div class="flex items-center justify-between mb-1">
-                <span class="font-mono text-[10px] text-slate-400">#1042</span>
-                <span class="text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">完了</span>
-              </div>
-              <p class="text-xs font-bold text-slate-700 leading-snug mb-1">APIエラー調査・修正</p>
-              <p class="text-[11px] text-slate-400">担当：田中 一郎</p>
-            </div>
-            <div class="border border-slate-100 rounded-md p-2 bg-slate-50">
-              <div class="flex items-center justify-between mb-1">
-                <span class="font-mono text-[10px] text-slate-400">#1043</span>
-                <span class="text-[10px] font-bold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">進行中</span>
-              </div>
-              <p class="text-xs font-bold text-slate-700 leading-snug mb-1">バッチ処理リファクタリング</p>
-              <p class="text-[11px] text-slate-400">担当：鈴木 花子</p>
-            </div>
-            <div class="border border-slate-100 rounded-md p-2 bg-slate-50">
-              <div class="flex items-center justify-between mb-1">
-                <span class="font-mono text-[10px] text-slate-400">#1045</span>
-                <span class="text-[10px] font-bold bg-green-100 text-green-700 px-1.5 py-0.5 rounded-full">完了</span>
-              </div>
-              <p class="text-xs font-bold text-slate-700 leading-snug mb-1">単体テスト追加（認証）</p>
-              <p class="text-[11px] text-slate-400">担当：山田 次郎</p>
-            </div>
-            <div class="border border-slate-100 rounded-md p-2 bg-slate-50">
-              <div class="flex items-center justify-between mb-1">
-                <span class="font-mono text-[10px] text-slate-400">#1047</span>
-                <span class="text-[10px] font-bold bg-blue-100 text-blue-600 px-1.5 py-0.5 rounded-full">未着手</span>
-              </div>
-              <p class="text-xs font-bold text-slate-700 leading-snug mb-1">本番リリース手順書</p>
-              <p class="text-[11px] text-slate-400">担当：佐藤 三郎</p>
-            </div>
-            <div class="border border-slate-100 rounded-md p-2 bg-slate-50 col-span-2">
-              <div class="flex items-center justify-between mb-1">
-                <span class="font-mono text-[10px] text-slate-400">#1048</span>
-                <span class="text-[10px] font-bold bg-orange-100 text-orange-600 px-1.5 py-0.5 rounded-full">進行中</span>
-              </div>
-              <p class="text-xs font-bold text-slate-700 leading-snug mb-1">外部連携API仕様書レビュー対応</p>
-              <p class="text-[11px] text-slate-400">担当：田中 一郎・山田 次郎</p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- OneNote TODO -->
-      <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div class="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
-          <span class="w-4 h-4 rounded bg-purple-700 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">N</span>
-          <span class="text-xs font-bold text-slate-700">OneNote — TODO</span>
-          <span class="ml-auto text-[11px] text-slate-400">引き継ぎ</span>
-        </div>
-        <ul class="divide-y divide-dashed divide-slate-100 px-3">
-          <li class="py-2 text-xs text-slate-700 pl-3 relative before:absolute before:left-0 before:top-2 before:text-purple-600 before:content-['•'] before:text-base before:leading-none">外部APIとの疎通確認（来週中）</li>
-          <li class="py-2 text-xs text-slate-700 pl-3 relative before:absolute before:left-0 before:top-2 before:text-purple-600 before:content-['•'] before:text-base before:leading-none">ステージング環境の動作確認依頼</li>
-          <li class="py-2 text-xs text-slate-700 pl-3 relative before:absolute before:left-0 before:top-2 before:text-purple-600 before:content-['•'] before:text-base before:leading-none">議事録をSharePointにアップ</li>
-          <li class="py-2 text-xs text-slate-700 pl-3 relative before:absolute before:left-0 before:top-2 before:text-purple-600 before:content-['•'] before:text-base before:leading-none">Redmineチケット #1047 手順書ドラフト</li>
-          <li class="py-2 text-xs text-slate-700 pl-3 relative before:absolute before:left-0 before:top-2 before:text-purple-600 before:content-['•'] before:text-base before:leading-none">月次コスト試算を経営会議用に更新</li>
-        </ul>
-      </div>
-
-      <!-- OneNote 日報 -->
-      <div class="bg-white rounded-lg shadow-sm overflow-hidden">
-        <div class="px-3 py-2 border-b border-slate-100 flex items-center gap-2">
-          <span class="w-4 h-4 rounded bg-purple-700 text-white text-[10px] font-black flex items-center justify-center flex-shrink-0">N</span>
-          <span class="text-xs font-bold text-slate-700">OneNote — 日報</span>
-          <span class="ml-auto text-[11px] text-slate-400">今週分</span>
-        </div>
-        <div class="p-3 flex flex-col gap-2.5">
-          <div class="border-l-2 border-purple-200 pl-2.5">
-            <p class="text-[11px] font-semibold text-slate-400 mb-0.5">04/07（月）</p>
-            <p class="text-xs text-slate-600 leading-relaxed">週次ミーティング。APIエラーの根本原因を特定、修正方針を決定。</p>
-          </div>
-          <div class="border-l-2 border-purple-200 pl-2.5">
-            <p class="text-[11px] font-semibold text-slate-400 mb-0.5">04/08（火）</p>
-            <p class="text-xs text-slate-600 leading-relaxed">バッチ処理リファクタリング設計レビュー。外部仕様書の差分確認。</p>
-          </div>
-          <div class="border-l-2 border-purple-200 pl-2.5">
-            <p class="text-[11px] font-semibold text-slate-400 mb-0.5">04/09（水）</p>
-            <p class="text-xs text-slate-600 leading-relaxed">認証モジュールのテスト追加完了・PR作成。API仕様書レビュー継続。</p>
-          </div>
-          <div class="border-l-2 border-purple-200 pl-2.5">
-            <p class="text-[11px] font-semibold text-slate-400 mb-0.5">04/10（木）</p>
-            <p class="text-xs text-slate-600 leading-relaxed">APIエラー修正マージ・本番デプロイ完了。手順書ドラフト着手。</p>
-          </div>
-        </div>
-      </div>
-
-    </div>
-
-    <!-- RIGHT: 報告文 -->
-    <div class="flex-1 bg-white overflow-y-auto p-4 flex flex-col gap-3">
-      <div class="flex items-center justify-between">
-        <h2 class="text-sm font-bold text-slate-700 flex items-center gap-2">
-          報告文
-          <span class="text-[11px] bg-blue-50 text-blue-600 px-2 py-0.5 rounded-full font-semibold">編集可能</span>
-        </h2>
-        <span id="charCount" class="text-xs text-slate-400"></span>
+    <!-- 設定サマリ -->
+    <div class="flex flex-col gap-2 text-xs text-slate-500">
+      <div class="flex items-center gap-2">
+        <span class="text-red-400">🔴</span>
+        <span>Redmine:</span>
+        <span id="summaryRedmine" class="font-medium text-slate-700">my-team</span>
       </div>
       <div class="flex items-center gap-2">
-        <span class="text-[11px] bg-gradient-to-r from-navy to-purple-700 text-white px-2.5 py-1 rounded-full font-semibold">Claude AI 生成</span>
-        <span class="text-xs text-slate-400">内容を確認・編集してから送信してください</span>
+        <span class="text-purple-400">🟣</span>
+        <span>OneNote:</span>
+        <span id="summaryOneNote" class="font-medium text-slate-700">引き継ぎ</span>
       </div>
-      <!-- resize-y で縦方向リサイズ可能（修正②） -->
-      <textarea id="reportText" oninput="updateCharCount()"
-        class="flex-1 w-full min-h-72 border border-slate-200 rounded-lg p-4 text-sm leading-loose text-slate-700 bg-slate-50 focus:outline-none focus:border-navy-light focus:ring-2 focus:ring-navy/10 focus:bg-white transition resize-y"
-      >お疲れ様です。今週の進捗をご報告いたします。
-
-【今週の進捗】
-■ 完了事項
-・APIエラー原因の特定および修正対応（チケット #1042）
-　→ 本番環境へのデプロイまで完了しました。
-・認証モジュールの単体テスト追加、PR作成・マージ（チケット #1045）
-　→ テストカバレッジが改善されました。
-
-■ 進行中
-・バッチ処理リファクタリング（チケット #1043）
-　→ 設計レビュー完了。来週より実装フェーズへ移行予定。
-・外部連携API仕様書レビュー対応（チケット #1048）
-　→ 差分確認まで完了。先方への確認事項をまとめ中。
-
-【来週の予定】
-・外部APIとの疎通確認（インフラ担当と連携）
-・バッチ処理リファクタリング 実装着手
-・本番リリース手順書のドラフト完成（チケット #1047）
-
-【課題・懸念事項】
-・外部連携API仕様書に未確定箇所が残っており、先方の回答待ちです。
-　確認が長引く場合はスケジュールへの影響が生じる可能性があります。
-
-以上、よろしくお願いいたします。</textarea>
     </div>
+
+    <!-- 収集ボタン -->
+    <button id="collectBtn" onclick="startCollect()"
+      class="w-full bg-emerald-500 hover:bg-emerald-400 active:scale-95 text-white font-bold py-3 rounded-xl flex items-center justify-center gap-2 transition">
+      <span id="collectBtnIcon">▶</span>
+      <span id="collectBtnLabel">収集を開始する</span>
+    </button>
+
+    <button onclick="openSettings()" class="text-xs text-slate-400 hover:text-slate-600 text-center transition">⚙ 設定を変更する</button>
   </div>
-
-  <!-- FOOTER -->
-  <footer class="bg-white border-t border-slate-200 px-6 py-3 flex items-center justify-between flex-shrink-0 shadow-[0_-2px_8px_rgba(0,0,0,0.04)]">
-    <div class="flex flex-col gap-0.5">
-      <span class="text-[11px] text-slate-400">返信先</span>
-      <span id="footerEmail" class="text-sm font-semibold text-slate-700 flex items-center gap-1.5">✉ boss.name@company.co.jp</span>
-    </div>
-    <div class="flex items-center gap-2.5">
-      <button onclick="handleCancel()"
-        class="text-sm font-semibold text-slate-400 hover:text-slate-600 border border-slate-200 hover:border-slate-300 bg-white px-4 py-2 rounded-lg transition">
-        キャンセル
-      </button>
-      <!-- 送信前確認モーダルを経由（修正③） -->
-      <button onclick="openSendConfirm()"
-        class="text-sm font-bold text-white bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg shadow shadow-green-600/25 transition">
-        送信する &nbsp;→
-      </button>
-    </div>
-  </footer>
-
 </div>
 
-<!-- ════════════════════════
-     汎用確認モーダル（confirm() の置き換え）
-════════════════════════ -->
-<div id="confirmModal" class="hidden fixed inset-0 bg-black/45 z-50 items-center justify-center p-4"
-     role="dialog" aria-modal="true" aria-labelledby="confirmModalTitle">
-  <div class="bg-white rounded-xl shadow-2xl w-full max-w-sm overflow-hidden">
-    <div class="px-5 pt-5 pb-4">
-      <h2 id="confirmModalTitle" class="text-base font-bold text-slate-800 mb-2"></h2>
-      <p id="confirmModalMsg" class="text-sm text-slate-500 leading-relaxed"></p>
+<!-- ════════════════ PAGE: LOADING ════════════════ -->
+<div id="pageLoading" class="hidden flex-1 flex-col items-center justify-center p-8 gap-6">
+  <div class="bg-white rounded-2xl shadow-lg p-8 w-full max-w-md">
+    <div class="text-center mb-6">
+      <div class="text-sm text-slate-500">収集中…</div>
+      <div id="loadingWeekLabel" class="text-base font-bold text-slate-700 mt-1"></div>
     </div>
-    <div class="px-5 pb-5 flex justify-end gap-2.5">
-      <button id="confirmModalCancel"
-        class="text-sm font-semibold text-slate-400 border border-slate-200 hover:border-slate-300 bg-white px-4 py-2 rounded-lg transition">
-        キャンセル
-      </button>
-      <button id="confirmModalOk"
-        class="text-sm font-bold text-white px-5 py-2 rounded-lg transition">
-        確認
-      </button>
+    <div id="dynStepContainer" class="flex flex-col gap-2"></div>
+    <div class="mt-6 text-center">
+      <button onclick="cancelCollect()"
+        class="text-xs text-slate-400 hover:text-red-500 transition">✕ 収集を中断する</button>
     </div>
   </div>
 </div>
 
-<!-- ════════════════════════
-     送信確認モーダル
-════════════════════════ -->
-<div id="sendConfirmModal" class="hidden fixed inset-0 bg-black/45 z-50 items-center justify-center p-4"
-     role="dialog" aria-modal="true" aria-labelledby="sendConfirmTitle">
-  <div class="bg-white rounded-xl shadow-2xl w-full max-w-md overflow-hidden">
-    <div class="bg-navy px-5 py-4 flex items-center justify-between">
-      <h2 id="sendConfirmTitle" class="text-white font-bold text-base">送信の確認</h2>
-      <button onclick="closeSendConfirm()" class="text-white/60 hover:text-white text-xl leading-none transition">×</button>
+<!-- ════════════════ PAGE: DASHBOARD ════════════════ -->
+<div id="pageDashboard" class="hidden flex-1 flex-col gap-4 p-4 overflow-auto">
+
+  <!-- 対象週バナー -->
+  <div class="flex items-center justify-between bg-navy text-white rounded-xl px-5 py-3">
+    <div>
+      <div class="text-[11px] text-white/60">対象週</div>
+      <div id="dashWeekLabel" class="font-bold text-base"></div>
     </div>
-    <div class="p-5 flex flex-col gap-4">
-      <div class="bg-amber-50 border border-amber-200 rounded-lg px-4 py-3 text-sm text-amber-800 font-semibold">
-        ⚠ 送信すると上司に報告メールが届きます。内容を確認してください。
+    <div class="text-[11px] bg-white/20 px-3 py-1 rounded-full">AI生成</div>
+  </div>
+
+  <!-- メインコンテンツ -->
+  <div class="grid grid-cols-1 lg:grid-cols-2 gap-4">
+
+    <!-- 左列：優先タスク -->
+    <div class="flex flex-col gap-4">
+
+      <!-- 今週やること -->
+      <div class="bg-white rounded-xl shadow p-5 card-hover">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-lg">🎯</span>
+          <h2 class="font-bold text-slate-800">今週やること</h2>
+          <span id="todoBadge" class="ml-auto text-[11px] bg-emerald-100 text-emerald-700 font-bold px-2 py-0.5 rounded-full"></span>
+        </div>
+        <div id="todoList" class="flex flex-col gap-2 text-sm text-slate-700"></div>
       </div>
-      <div class="flex flex-col gap-2">
-        <div class="flex gap-2 text-sm">
-          <span class="text-slate-400 font-semibold w-14 flex-shrink-0">宛先</span>
-          <span id="confirmEmail" class="text-slate-700 font-bold"></span>
+
+      <!-- チームへの依頼候補 -->
+      <div class="bg-white rounded-xl shadow p-5 card-hover">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-lg">👥</span>
+          <h2 class="font-bold text-slate-800">チームへの依頼候補</h2>
+          <span id="delegateBadge" class="ml-auto text-[11px] bg-blue-100 text-blue-700 font-bold px-2 py-0.5 rounded-full"></span>
         </div>
-        <div class="flex gap-2 text-sm">
-          <span class="text-slate-400 font-semibold w-14 flex-shrink-0">件名</span>
-          <span id="confirmSubject" class="text-slate-700"></span>
+        <div id="delegateList" class="flex flex-col gap-2 text-sm text-slate-700"></div>
+      </div>
+
+    </div>
+
+    <!-- 右列：Redmine・メール -->
+    <div class="flex flex-col gap-4">
+
+      <!-- 対応が必要なメール -->
+      <div class="bg-white rounded-xl shadow p-5 card-hover">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-lg">✉️</span>
+          <h2 class="font-bold text-slate-800">対応が必要なメール</h2>
+          <span id="emailBadge" class="ml-auto text-[11px] bg-amber-100 text-amber-700 font-bold px-2 py-0.5 rounded-full"></span>
         </div>
-        <div class="flex flex-col gap-1 text-sm">
-          <span class="text-slate-400 font-semibold">本文（冒頭）</span>
-          <div id="confirmPreview" class="bg-slate-50 border border-slate-200 rounded-lg p-3 text-slate-600 text-xs leading-relaxed whitespace-pre-wrap max-h-32 overflow-y-auto"></div>
+        <div id="emailList" class="flex flex-col gap-2 text-sm text-slate-700"></div>
+      </div>
+
+      <!-- Redmine 期限が近いチケット -->
+      <div class="bg-white rounded-xl shadow p-5 card-hover">
+        <div class="flex items-center gap-2 mb-4">
+          <span class="text-lg">🔴</span>
+          <h2 class="font-bold text-slate-800">Redmine チケット</h2>
+          <span id="ticketBadge" class="ml-auto text-[11px] bg-red-100 text-red-700 font-bold px-2 py-0.5 rounded-full"></span>
         </div>
+        <div id="ticketList" class="flex flex-col gap-2 text-sm text-slate-700"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- メモ欄 -->
+  <div class="bg-white rounded-xl shadow p-5">
+    <div class="flex items-center gap-2 mb-3">
+      <span class="text-lg">📝</span>
+      <h2 class="font-bold text-slate-800">AIの所見・懸念事項</h2>
+    </div>
+    <div id="concerns" class="text-sm text-slate-600 leading-relaxed whitespace-pre-line"></div>
+  </div>
+
+</div>
+
+<!-- ════════════════ SETTINGS MODAL ════════════════ -->
+<div id="settingsModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6 flex flex-col gap-5"
+       role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
+    <div class="flex items-center justify-between">
+      <h2 id="settingsTitle" class="font-bold text-slate-800 text-base">⚙ 設定</h2>
+      <button onclick="closeSettings()" class="text-slate-400 hover:text-slate-700 text-xl leading-none">×</button>
+    </div>
+
+    <!-- Redmine -->
+    <div>
+      <label class="text-xs font-semibold text-slate-500 block mb-1">Redmine プロジェクト</label>
+      <div class="tag-wrap flex flex-wrap gap-1.5 p-2 border border-slate-300 rounded-lg bg-white cursor-text min-h-[38px]"
+           id="redmineTagWrap" onclick="focusTagInput('redmineTagInput')">
+        <input type="text" id="redmineTagInput" class="outline-none text-sm flex-1 min-w-[120px] bg-transparent"
+               placeholder="プロジェクト名を入力してEnter"
+               onkeydown="handleTagKey(event,'redmine')" />
       </div>
     </div>
-    <div class="px-5 py-4 border-t border-slate-100 flex justify-end gap-2.5">
-      <button onclick="closeSendConfirm()"
-        class="text-sm font-semibold text-slate-400 border border-slate-200 hover:border-slate-300 bg-white px-4 py-2 rounded-lg transition">
-        戻る
-      </button>
-      <button onclick="executeSend()"
-        class="text-sm font-bold text-white bg-green-600 hover:bg-green-700 px-6 py-2 rounded-lg shadow shadow-green-600/20 transition">
-        送信する →
-      </button>
+
+    <!-- OneNote -->
+    <div>
+      <label class="text-xs font-semibold text-slate-500 block mb-1">OneNote ノートブック</label>
+      <div class="tag-wrap flex flex-wrap gap-1.5 p-2 border border-slate-300 rounded-lg bg-white cursor-text min-h-[38px]"
+           id="oneNoteTagWrap" onclick="focusTagInput('oneNoteTagInput')">
+        <input type="text" id="oneNoteTagInput" class="outline-none text-sm flex-1 min-w-[120px] bg-transparent"
+               placeholder="ノートブック名を入力してEnter"
+               onkeydown="handleTagKey(event,'onenote')" />
+      </div>
+    </div>
+
+    <div class="flex gap-3 pt-2">
+      <button onclick="closeSettings()" class="flex-1 border border-slate-200 text-slate-600 text-sm py-2.5 rounded-xl hover:bg-slate-50 transition">キャンセル</button>
+      <button onclick="saveSettings()" class="flex-1 bg-navy text-white text-sm font-bold py-2.5 rounded-xl hover:opacity-90 transition">保存</button>
     </div>
   </div>
 </div>
 
-<!-- ════════════════════════
-     設定モーダル
-════════════════════════ -->
-<div id="settingsModal" class="hidden fixed inset-0 bg-black/45 z-50 items-center justify-center p-4"
-     role="dialog" aria-modal="true" aria-labelledby="settingsTitle">
-  <div class="bg-white rounded-xl shadow-2xl w-full max-w-lg overflow-hidden flex flex-col max-h-[85vh]">
-    <div class="bg-navy px-5 py-4 flex items-center justify-between flex-shrink-0">
-      <h2 id="settingsTitle" class="text-white font-bold text-base">⚙ 接続設定</h2>
-      <button onclick="closeSettings()" class="text-white/60 hover:text-white text-xl leading-none transition">×</button>
-    </div>
-
-    <div class="overflow-y-auto flex-1 p-5 flex flex-col gap-4">
-
-      <!-- Redmine セクション -->
-      <div class="text-[11px] font-bold text-slate-400 uppercase tracking-widest pb-1.5 border-b border-slate-100">🔴 Redmine</div>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">プロジェクト名 <span class="text-red-400">*</span>（複数可）</label>
-        <div class="tag-wrap" id="modalRedmineTagWrap" onclick="focusTagInput('modalRedmineTagInput')">
-          <input type="text" id="modalRedmineTagInput" class="tag-text-input"
-                 placeholder="プロジェクト名を入力してEnter"
-                 onkeydown="handleTagKey(event,'redmine')" />
-        </div>
-      </div>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">Redmine URL <span class="text-red-400">*</span></label>
-        <input type="text" id="modalRedmineUrl" value="https://redmine.company.co.jp" placeholder="https://redmine.company.co.jp"
-          class="border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:border-navy-light focus:ring-2 focus:ring-navy/10 focus:bg-white transition" />
-      </div>
-
-      <!-- OneNote セクション -->
-      <div class="text-[11px] font-bold text-slate-400 uppercase tracking-widest pb-1.5 border-b border-slate-100 mt-1">🟣 OneNote</div>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">ノートブック名（複数可）</label>
-        <div class="tag-wrap" id="modalOneNoteTagWrap" onclick="focusTagInput('modalOneNoteTagInput')">
-          <input type="text" id="modalOneNoteTagInput" class="tag-text-input"
-                 placeholder="ノートブック名を入力してEnter"
-                 onkeydown="handleTagKey(event,'onenote')" />
-        </div>
-      </div>
-
-      <!-- メール セクション -->
-      <div class="text-[11px] font-bold text-slate-400 uppercase tracking-widest pb-1.5 border-b border-slate-100 mt-1">✉ メール</div>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">上司のメールアドレス <span class="text-red-400">*</span></label>
-        <div class="flex gap-2 items-center">
-          <input type="text" id="modalBossPrefix" value="boss.name" placeholder="boss.name"
-            class="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:border-navy-light focus:ring-2 focus:ring-navy/10 focus:bg-white transition" />
-          <span id="modalDomainDisplay" class="text-sm text-slate-400 bg-slate-100 border border-slate-200 rounded-lg px-3 py-2.5 whitespace-nowrap">@company.co.jp</span>
-        </div>
-      </div>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">メールドメイン <span class="text-red-400">*</span></label>
-        <input type="text" id="modalEmailDomain" value="@company.co.jp" placeholder="@company.co.jp"
-          oninput="document.getElementById('modalDomainDisplay').textContent = this.value || '@company.co.jp'"
-          class="border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:border-navy-light focus:ring-2 focus:ring-navy/10 focus:bg-white transition" />
-      </div>
-      <div class="flex flex-col gap-1.5">
-        <label class="text-[11px] font-bold text-slate-400 uppercase tracking-widest">トリガーメール件名 <span class="text-red-400">*</span></label>
-        <input type="text" id="modalEmailSubject" value="課週間ミーティング（書面）" placeholder="例: 課週間ミーティング（書面）"
-          class="border border-slate-200 rounded-lg px-3 py-2.5 text-sm bg-slate-50 focus:outline-none focus:border-navy-light focus:ring-2 focus:ring-navy/10 focus:bg-white transition" />
-        <p class="text-[11px] text-slate-400">前方一致で検索。末尾の日付部分は自動マッチ</p>
-      </div>
-    </div>
-
-    <div class="px-5 py-4 border-t border-slate-100 flex justify-end gap-2.5 flex-shrink-0">
-      <button onclick="closeSettings()"
-        class="text-sm font-semibold text-slate-400 border border-slate-200 hover:border-slate-300 bg-white px-4 py-2 rounded-lg transition">
-        閉じる
-      </button>
-      <button onclick="saveSettings()"
-        class="text-sm font-bold text-white bg-navy hover:bg-navy-light px-5 py-2 rounded-lg transition">
-        保存する
-      </button>
+<!-- ════════════════ CONFIRM MODAL ════════════════ -->
+<div id="confirmModal" class="hidden fixed inset-0 bg-black/50 z-50 items-center justify-center p-4">
+  <div class="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 flex flex-col gap-4"
+       role="dialog" aria-modal="true">
+    <h3 id="confirmTitle" class="font-bold text-slate-800"></h3>
+    <p id="confirmBody" class="text-sm text-slate-500"></p>
+    <div class="flex gap-3 pt-1">
+      <button onclick="closeConfirmModal()" class="flex-1 border border-slate-200 text-slate-600 text-sm py-2.5 rounded-xl hover:bg-slate-50 transition">戻る</button>
+      <button id="confirmOkBtn" class="flex-1 text-white text-sm font-bold py-2.5 rounded-xl transition"></button>
     </div>
   </div>
 </div>
 
-<!-- TOAST -->
-<div id="toast" class="toast-base bg-slate-800 text-white text-sm font-semibold px-5 py-3 rounded-xl shadow-lg"></div>
+<!-- Toast -->
+<div id="toast" class="toast"></div>
 
-<!-- NOTE: Flask/Jinja2 に移行する際は script ブロックを {% raw %}...{% endraw %} で囲み、
-     サーバー変数は {{ variable | tojson }} で安全に埋め込んでください。 -->
 <script>
-  // ══════════════════════
-  // STATE
-  // ══════════════════════
+  // ══════════════════════════════════════
+  // 状態管理
+  // ══════════════════════════════════════
   const state = {
     redmineProjects:  ['my-team'],
     oneNoteNotebooks: ['引き継ぎ'],
-    emailSubject:     '課週間ミーティング（書面）',
-    collecting:       false,
-    abortCollect:     false,
-    sending:          false,   // 送信連打ガード
+    collecting:  false,
+    _sseSource:  null,
+    _confirmCb:  null,
   };
 
-  // ══════════════════════
-  // タグ入力（XSS修正：textContentで構築）
-  // ══════════════════════
+  let weekOffset = 0;
+
+  // Flask 起動時にサーバーの設定値でデフォルトを上書き
+  fetch('/api/config')
+    .then(r => r.ok ? r.json() : null)
+    .then(cfg => {
+      if (!cfg) return;
+      if (cfg.redmineProjects?.length)  state.redmineProjects  = cfg.redmineProjects;
+      if (cfg.oneNoteNotebooks?.length) state.oneNoteNotebooks = cfg.oneNoteNotebooks;
+      renderAllTags();
+      updateStandbySummary();
+    })
+    .catch(() => {});
+
+  // ══════════════════════════════════════
+  // 週選択
+  // ══════════════════════════════════════
+  function getWeekRange(offset) {
+    const today = new Date();
+    const mon = new Date(today);
+    mon.setDate(today.getDate() - today.getDay() + (today.getDay() === 0 ? -6 : 1) + offset * 7);
+    const sun = new Date(mon); sun.setDate(mon.getDate() + 6);
+    const fmt = d => `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
+    return `${fmt(mon)}〜${fmt(sun)}`;
+  }
+
+  function updateWeekDisplay() {
+    const label = getWeekRange(weekOffset);
+    document.getElementById('weekLabel').textContent = label;
+    document.getElementById('nextWeekBtn').disabled = weekOffset >= 0;
+    document.getElementById('nextWeekBtn').classList.toggle('opacity-30', weekOffset >= 0);
+  }
+
+  function changeWeek(delta) {
+    if (weekOffset + delta > 0) return;
+    weekOffset += delta;
+    updateWeekDisplay();
+  }
+
+  updateWeekDisplay();
+
+  // ══════════════════════════════════════
+  // 設定サマリ更新
+  // ══════════════════════════════════════
+  function updateStandbySummary() {
+    document.getElementById('summaryRedmine').textContent =
+      state.redmineProjects.length ? state.redmineProjects.join('・') : '（未設定）';
+    document.getElementById('summaryOneNote').textContent =
+      state.oneNoteNotebooks.length ? state.oneNoteNotebooks.join('・') : '（未設定）';
+  }
+
+  // ══════════════════════════════════════
+  // ページ切り替え
+  // ══════════════════════════════════════
+  function showPage(id) {
+    ['pageStandby','pageLoading','pageDashboard'].forEach(p => {
+      document.getElementById(p).classList.replace('flex','hidden');
+    });
+    document.getElementById(id).classList.replace('hidden','flex');
+  }
+
+  // ══════════════════════════════════════
+  // 収集開始
+  // ══════════════════════════════════════
+  function startCollect() {
+    if (state.collecting) return;
+    if (state.redmineProjects.length === 0) { showToast('⚠ Redmineプロジェクトを1つ以上追加してください'); return; }
+
+    state.collecting = true;
+    setCollectBtnsDisabled(true);
+
+    const weekLabel = getWeekRange(weekOffset);
+    document.getElementById('loadingWeekLabel').textContent = weekLabel;
+    document.getElementById('headerWeek').textContent = weekLabel;
+
+    showPage('pageLoading');
+    buildAndRunSteps();
+  }
+
+  function setCollectBtnsDisabled(disabled) {
+    const btn = document.getElementById('collectBtn');
+    const hBtn = document.getElementById('headerCollectBtn');
+    btn.disabled = disabled;
+    if (hBtn) hBtn.disabled = disabled;
+    document.getElementById('collectBtnLabel').textContent = disabled ? '収集中…' : '収集を開始する';
+    document.getElementById('collectBtnIcon').textContent  = disabled ? '' : '▶';
+  }
+
+  // ══════════════════════════════════════
+  // ステップ動的生成
+  // ══════════════════════════════════════
+  function buildAndRunSteps() {
+    const redmineLabel = state.redmineProjects.map(p => `「${p}」`).join('・');
+    const oneNoteLabel = state.oneNoteNotebooks.length
+      ? state.oneNoteNotebooks.map(n => `「${n}」`).join('・')
+      : '（未設定）';
+
+    const stepsData = [
+      { icon: '🔴', label: 'Redmine チケット取得',   detail: `${redmineLabel} のチケットを取得中…`,   done: 'チケット取得完了' },
+      { icon: '🟣', label: 'OneNote 業務リスト取得', detail: `${oneNoteLabel} の業務リストを取得中…`, done: '業務リスト取得完了' },
+      { icon: '🟣', label: 'OneNote 日報 取得',      detail: `${oneNoteLabel} の日報を取得中…`,       done: '日報取得完了' },
+      { icon: '✉️', label: 'メール 取得',            detail: '対応が必要なメールを取得中…',           done: 'メール取得完了' },
+      { icon: '🔵', label: 'AI でタスク整理',        detail: 'データを解析・優先順位を整理中…',       done: 'タスク整理完了' },
+    ];
+
+    const container = document.getElementById('dynStepContainer');
+    container.innerHTML = '';
+    stepsData.forEach((s, i) => {
+      const row = document.createElement('div');
+      row.id = `dynStep${i}`;
+      row.className = 'flex items-start gap-3 p-3 rounded-lg border bg-slate-50 border-slate-200';
+
+      const iconEl = document.createElement('span');
+      iconEl.className = 'text-base flex-shrink-0 mt-0.5';
+      iconEl.textContent = s.icon;
+
+      const info = document.createElement('div');
+      info.className = 'flex-1 min-w-0';
+
+      const lbl = document.createElement('p');
+      lbl.className = 'text-sm font-semibold text-slate-700';
+      lbl.textContent = s.label;
+
+      const det = document.createElement('p');
+      det.id = `dynDetail${i}`;
+      det.className = 'text-[11px] text-slate-400 mt-0.5';
+      det.textContent = i === 0 ? s.detail : '待機中';
+
+      info.appendChild(lbl);
+      info.appendChild(det);
+      row.appendChild(iconEl);
+      row.appendChild(info);
+
+      if (i === 0) {
+        const sp = document.createElement('div');
+        sp.id = `dynSpin${i}`;
+        sp.className = 'step-spinner';
+        row.appendChild(sp);
+      } else {
+        const st = document.createElement('span');
+        st.id = `dynStatus${i}`;
+        st.className = 'text-base flex-shrink-0';
+        st.textContent = '⏳';
+        row.appendChild(st);
+      }
+
+      container.appendChild(row);
+    });
+
+    startRealCollect(stepsData);
+  }
+
+  // ══════════════════════════════════════
+  // 実 API 接続
+  // ══════════════════════════════════════
+  async function startRealCollect(stepsData) {
+    let res;
+    try {
+      res = await fetch('/api/collect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weekOffset }),
+      });
+    } catch (e) {
+      runDynStepsMock(stepsData);
+      return;
+    }
+    if (!res.ok) {
+      showToast('⚠ 収集の開始に失敗しました: ' + res.status);
+      state.collecting = false;
+      setCollectBtnsDisabled(false);
+      showPage('pageStandby');
+      return;
+    }
+
+    const source = new EventSource('/api/stream');
+    state._sseSource = source;
+
+    source.addEventListener('step', e => {
+      const d = JSON.parse(e.data);
+      _stepActivate(d.step - 1, stepsData[d.step - 1]);
+    });
+    source.addEventListener('step_done', e => {
+      const d = JSON.parse(e.data);
+      _stepDone(d.step - 1, stepsData[d.step - 1]);
+    });
+    source.addEventListener('done', e => {
+      source.close(); state._sseSource = null;
+      const d = JSON.parse(e.data);
+      renderDashboard(d);
+      state.collecting = false;
+      setCollectBtnsDisabled(false);
+      const hBtn = document.getElementById('headerCollectBtn');
+      hBtn.classList.remove('hidden');
+      hBtn.classList.add('flex');
+      showPage('pageDashboard');
+      showToast('✓ タスク整理が完了しました');
+    });
+    source.addEventListener('cancelled', e => {
+      source.close(); state._sseSource = null;
+      state.collecting = false;
+      setCollectBtnsDisabled(false);
+      showPage('pageStandby');
+      showToast('収集を中断しました');
+    });
+    source.addEventListener('error', e => {
+      let msg = '収集中にエラーが発生しました';
+      try { msg = JSON.parse(e.data).message || msg; } catch (_) {}
+      source.close(); state._sseSource = null;
+      state.collecting = false;
+      setCollectBtnsDisabled(false);
+      showPage('pageStandby');
+      showToast('⚠ ' + msg);
+    });
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) return;
+      source.close(); state._sseSource = null;
+      if (state.collecting) {
+        state.collecting = false;
+        setCollectBtnsDisabled(false);
+        showPage('pageStandby');
+        showToast('⚠ サーバーとの接続が切れました');
+      }
+    };
+  }
+
+  function _stepActivate(i, s) {
+    const el = document.getElementById(`dynStep${i}`);
+    const det = document.getElementById(`dynDetail${i}`);
+    const stat = document.getElementById(`dynStatus${i}`);
+    if (!el) return;
+    el.classList.replace('bg-slate-50','bg-blue-50');
+    el.classList.replace('border-slate-200','border-blue-200');
+    if (det) det.textContent = s.detail;
+    if (!document.getElementById(`dynSpin${i}`) && stat) {
+      stat.textContent = '';
+      const sp = document.createElement('div');
+      sp.id = `dynSpin${i}`; sp.className = 'step-spinner';
+      el.appendChild(sp);
+    }
+  }
+
+  function _stepDone(i, s) {
+    const el = document.getElementById(`dynStep${i}`);
+    const det = document.getElementById(`dynDetail${i}`);
+    const stat = document.getElementById(`dynStatus${i}`);
+    const sp = document.getElementById(`dynSpin${i}`);
+    if (!el) return;
+    el.classList.replace('bg-blue-50','bg-green-50');
+    el.classList.replace('border-blue-200','border-green-200');
+    if (det) det.textContent = s.done;
+    if (sp) sp.remove();
+    if (stat) stat.textContent = '✅';
+  }
+
+  // Flask 未起動時のデモ用モック
+  async function runDynStepsMock(stepsData) {
+    for (let i = 0; i < stepsData.length; i++) {
+      _stepActivate(i, stepsData[i]);
+      await new Promise(r => setTimeout(r, 800 + Math.random() * 500));
+      _stepDone(i, stepsData[i]);
+    }
+    await new Promise(r => setTimeout(r, 400));
+    renderDashboard(_mockDashboardData());
+    state.collecting = false;
+    setCollectBtnsDisabled(false);
+    const hBtn = document.getElementById('headerCollectBtn');
+    hBtn.classList.remove('hidden');
+    hBtn.classList.add('flex');
+    showPage('pageDashboard');
+    showToast('✓ タスク整理が完了しました（デモ）');
+  }
+
+  // ══════════════════════════════════════
+  // ダッシュボード描画
+  // ══════════════════════════════════════
+  function renderDashboard(data) {
+    document.getElementById('dashWeekLabel').textContent = data.weekLabel || getWeekRange(weekOffset);
+
+    renderList('todoList',     'todoBadge',     data.todo      || [], 'priority');
+    renderList('delegateList', 'delegateBadge', data.delegate  || [], 'delegate');
+    renderList('emailList',    'emailBadge',    data.emails    || [], 'email');
+    renderList('ticketList',   'ticketBadge',   data.tickets   || [], 'ticket');
+
+    const concerns = document.getElementById('concerns');
+    concerns.textContent = (data.concerns || []).join('\n') || '特になし';
+  }
+
+  function renderList(listId, badgeId, items, type) {
+    const container = document.getElementById(listId);
+    const badge = document.getElementById(badgeId);
+    container.innerHTML = '';
+    badge.textContent = items.length + '件';
+
+    if (items.length === 0) {
+      const empty = document.createElement('p');
+      empty.className = 'text-slate-400 text-xs';
+      empty.textContent = 'なし';
+      container.appendChild(empty);
+      return;
+    }
+
+    items.forEach(item => {
+      const row = document.createElement('div');
+      row.className = 'flex items-start gap-2 p-2.5 rounded-lg bg-slate-50 border border-slate-100';
+
+      // 優先度バッジ（todoリストのみ）
+      if (type === 'priority' && item.priority) {
+        const badge = document.createElement('span');
+        const colorMap = { 高: 'bg-red-100 text-red-700', 中: 'bg-amber-100 text-amber-700', 低: 'bg-slate-100 text-slate-500' };
+        badge.className = `priority-badge flex-shrink-0 mt-0.5 ${colorMap[item.priority] || colorMap['低']}`;
+        badge.textContent = item.priority;
+        row.appendChild(badge);
+      }
+
+      const text = document.createElement('span');
+      text.className = 'text-sm text-slate-700 leading-snug';
+      text.textContent = typeof item === 'string' ? item : item.text || item.subject || JSON.stringify(item);
+      row.appendChild(text);
+
+      container.appendChild(row);
+    });
+  }
+
+  // ══════════════════════════════════════
+  // デモ用モックデータ
+  // ══════════════════════════════════════
+  function _mockDashboardData() {
+    return {
+      weekLabel: getWeekRange(weekOffset),
+      todo: [
+        { priority: '高', text: '外部APIとの疎通確認（インフラ担当と連携、期限：今週金曜）' },
+        { priority: '高', text: 'チケット #1048 仕様書レビュー完了・先方へ回答' },
+        { priority: '中', text: 'バッチ処理リファクタリング 実装着手（チケット #1043）' },
+        { priority: '中', text: '月次コスト試算を経営会議前に更新（OneNote）' },
+        { priority: '低', text: '本番リリース手順書ドラフト作成（チケット #1047）' },
+      ],
+      delegate: [
+        { text: '鈴木さん：バッチ処理リファクタリングの実装（チケット #1043）' },
+        { text: '山田さん：単体テスト追加・PR作成（チケット #1045）' },
+        { text: '佐藤さん：本番リリース手順書ドラフト（チケット #1047）' },
+      ],
+      emails: [
+        { text: '件名「外部API仕様確認」：先方からの質問に回答が必要（受信：昨日）' },
+        { text: '件名「課週間ミーティング（書面）（26/04）」：上司への報告メール（受信：本日）' },
+      ],
+      tickets: [
+        { text: '#1043 バッチ処理リファクタリング（進行中 50%・担当：鈴木）' },
+        { text: '#1048 外部連携API仕様書レビュー（進行中 80%・担当：田中・山田）' },
+        { text: '#1047 本番リリース手順書（未着手・担当：佐藤）' },
+        { text: '#1042 APIエラー調査・修正（完了 100%・担当：田中）' },
+      ],
+      concerns: [
+        '外部連携APIの仕様に未確定箇所が残っており、先方の回答待ちです。',
+        '今週は残業が続いているため、チーム員の体調に注意が必要です。',
+      ],
+    };
+  }
+
+  // ══════════════════════════════════════
+  // 収集中断
+  // ══════════════════════════════════════
+  function cancelCollect() {
+    if (!state.collecting) return;
+    openConfirmModal(
+      '収集を中断しますか？',
+      '取得済みのデータは破棄されます。',
+      'danger',
+      () => {
+        if (state._sseSource) { state._sseSource.close(); state._sseSource = null; }
+        fetch('/api/collect', { method: 'DELETE' }).catch(() => {});
+        state.collecting = false;
+        setCollectBtnsDisabled(false);
+        showPage('pageStandby');
+        showToast('収集を中断しました');
+      }
+    );
+  }
+
+  // ══════════════════════════════════════
+  // 設定モーダル
+  // ══════════════════════════════════════
+  function openSettings() {
+    renderAllTags();
+    const modal = document.getElementById('settingsModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    trapFocus(modal);
+  }
+
+  function closeSettings() {
+    const modal = document.getElementById('settingsModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
+  }
+
+  function saveSettings() {
+    if (state.redmineProjects.length === 0) { showToast('⚠ Redmineプロジェクトを1つ以上入力してください'); return; }
+    updateStandbySummary();
+    closeSettings();
+    showToast('✓ 設定を保存しました');
+  }
+
+  // ══════════════════════════════════════
+  // タグ入力
+  // ══════════════════════════════════════
   function focusTagInput(id) { document.getElementById(id)?.focus(); }
 
   function handleTagKey(e, type) {
@@ -581,482 +695,86 @@
     const wrap  = document.getElementById(wrapId);
     const input = document.getElementById(inputId);
     if (!wrap || !input) return;
-
     wrap.querySelectorAll('.tag-chip').forEach(t => t.remove());
-
     arr.forEach((val, i) => {
       const chip = document.createElement('div');
       chip.className = `tag-chip flex items-center gap-1 ${bgClass} ${textClass} text-xs font-semibold px-2 py-0.5 rounded-full border`;
-
-      // XSS修正: textContentで値をセット
-      const label = document.createElement('span');
-      label.textContent = val;
-
+      const label = document.createElement('span'); label.textContent = val;
       const btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'text-current opacity-50 hover:opacity-100 text-sm leading-none ml-0.5';
       btn.setAttribute('aria-label', val + ' を削除');
       btn.textContent = '×';
       btn.onclick = () => removeTag(type, i);
-
-      chip.appendChild(label);
-      chip.appendChild(btn);
+      chip.appendChild(label); chip.appendChild(btn);
       wrap.insertBefore(chip, input);
     });
-
     input.placeholder = arr.length === 0
       ? (type === 'redmine' ? 'プロジェクト名を入力してEnter' : 'ノートブック名を入力してEnter')
       : '追加…';
   }
 
   function renderAllTags() {
-    renderTags('redmineTagWrap',      'redmineTagInput',      state.redmineProjects,  'redmine', 'bg-red-50 border-red-200',     'text-red-700');
-    renderTags('oneNoteTagWrap',      'oneNoteTagInput',      state.oneNoteNotebooks, 'onenote', 'bg-purple-50 border-purple-200','text-purple-700');
-    renderTags('modalRedmineTagWrap', 'modalRedmineTagInput', state.redmineProjects,  'redmine', 'bg-red-50 border-red-200',     'text-red-700');
-    renderTags('modalOneNoteTagWrap', 'modalOneNoteTagInput', state.oneNoteNotebooks, 'onenote', 'bg-purple-50 border-purple-200','text-purple-700');
+    renderTags('redmineTagWrap', 'redmineTagInput', state.redmineProjects,  'redmine', 'bg-red-50 border-red-200',    'text-red-700');
+    renderTags('oneNoteTagWrap', 'oneNoteTagInput', state.oneNoteNotebooks, 'onenote', 'bg-purple-50 border-purple-200', 'text-purple-700');
   }
 
-  // ══════════════════════
-  // 週ナビゲーション
-  // ══════════════════════
-  let weekOffset = 0;
-
-  function getWeekRange(offset) {
-    const now = new Date();
-    const day = now.getDay();
-    const mon = new Date(now);
-    mon.setDate(now.getDate() - (day === 0 ? 6 : day - 1) + offset * 7);
-    const fri = new Date(mon);
-    fri.setDate(mon.getDate() + 4);
-    const fmt = d => `${d.getFullYear()}/${String(d.getMonth()+1).padStart(2,'0')}/${String(d.getDate()).padStart(2,'0')}`;
-    // 件名用の yy/mm 形式（月曜基準）
-    const mm = String(mon.getMonth()+1).padStart(2,'0');
-    const yy = String(mon.getFullYear()).slice(-2);
-    const label = offset === 0 ? '今週' : offset === -1 ? '先週' : `${offset > 0 ? '+' : ''}${offset}週`;
-    return { text: `${fmt(mon)} 〜 ${fmt(fri)}`, label, yymm: `${yy}/${mm}` };
-  }
-
-  function updateWeekDisplay() {
-    const { text, label } = getWeekRange(weekOffset);
-    document.getElementById('weekRangeDisplay').textContent = `${label}（${text}）`;
-  }
-
-  function changeWeek(d) { weekOffset += d; updateWeekDisplay(); }
-
-  // ══════════════════════
-  // 文字数カウント
-  // ══════════════════════
-  function updateCharCount() {
-    const len = document.getElementById('reportText').value.length;
-    document.getElementById('charCount').textContent = len.toLocaleString() + ' 文字';
-  }
-
-  // ══════════════════════
-  // ページ切り替え
-  // ══════════════════════
-  function showPage(id) {
-    ['pageStandby','pageLoading','pageReview'].forEach(p => {
-      const el = document.getElementById(p);
-      el.classList.remove('flex');
-      el.classList.add('hidden');
-    });
-    const target = document.getElementById(id);
-    target.classList.remove('hidden');
-    target.classList.add('flex');
-  }
-
-  // ══════════════════════
-  // 収集開始（連打ガード修正）
-  // ══════════════════════
-  function startCollect() {
-    if (state.collecting) return;   // 連打ガード
-    if (state.redmineProjects.length === 0) { showToast('⚠ Redmineプロジェクトを1つ以上追加してください'); return; }
-
-    const prefix  = document.getElementById('bossEmailPrefix').value.trim();
-    const domain  = document.getElementById('modalEmailDomain').value.trim() || '@company.co.jp';
-    const subject = document.getElementById('emailSubject').value.trim() || state.emailSubject;
-    const { text, yymm } = getWeekRange(weekOffset);
-
-    state.collecting  = true;
-    state.abortCollect = false;
-
-    // 全収集ボタンを無効化
-    setCollectBtnsDisabled(true);
-
-    document.getElementById('footerEmail').textContent = '✉ ' + prefix + domain;
-
-    const fullSubject = `${subject}（${yymm}）`;
-    const sub = document.getElementById('headerSubtitle');
-    sub.textContent = fullSubject;
-    sub.classList.remove('hidden');
-    const hBtn = document.getElementById('headerCollectBtn');
-    hBtn.classList.remove('hidden');
-    hBtn.classList.add('flex');
-    hBtn.disabled = true;
-
-    document.getElementById('reviewWeekLabel').textContent = text;
-    document.getElementById('loadingWeekLabel').textContent = text;
-
-    showPage('pageLoading');
-    buildAndRunSteps();
-  }
-
-  function setCollectBtnsDisabled(disabled) {
-    const btn = document.getElementById('collectBtn');
-    const hBtn = document.getElementById('headerCollectBtn');
-    btn.disabled = disabled;
-    if (hBtn) hBtn.disabled = disabled;
-    document.getElementById('collectBtnLabel').textContent = disabled ? '収集中…' : '収集を開始する';
-    document.getElementById('collectBtnIcon').textContent  = disabled ? '' : '▶';
-  }
-
-  // ══════════════════════
-  // ステップ動的生成・実行（XSS修正：DOM生成に変更）
-  // ══════════════════════
-  function buildAndRunSteps() {
-    const redmineLabel = state.redmineProjects.map(p => `「${p}」`).join('・');
-    const oneNoteLabel = state.oneNoteNotebooks.length
-      ? state.oneNoteNotebooks.map(n => `「${n}」`).join('・')
-      : '（未設定）';
-
-    const stepsData = [
-      { icon: '🔴', label: 'Redmine チケット取得',  detail: `${redmineLabel} のチームチケットを取得中…`, done: `${state.redmineProjects.length}プロジェクト 取得完了` },
-      { icon: '🟣', label: 'OneNote TODO 取得',      detail: `${oneNoteLabel} の TODO セクションを取得中…`, done: 'TODOリスト 取得完了' },
-      { icon: '🟣', label: 'OneNote 日報 取得',      detail: `${oneNoteLabel} の日報ページを取得中…`,      done: '今週分の日報 取得完了' },
-      { icon: '🔵', label: 'Claude AI で報告文生成', detail: 'データを解析・報告文を生成中…',               done: '報告文の生成完了' },
-    ];
-
-    const container = document.getElementById('stepsContainer');
-    container.innerHTML = '';
-
-    // XSS修正: innerHTML 不使用、すべて createElement + textContent で構築
-    stepsData.forEach((s, i) => {
-      const row = document.createElement('div');
-      row.id = `dynStep${i}`;
-      row.className = 'flex items-center gap-3 bg-slate-50 border border-slate-200 rounded-lg px-3.5 py-3 transition-all duration-300';
-
-      const iconEl = document.createElement('div');
-      iconEl.className = 'text-base flex-shrink-0';
-      iconEl.textContent = s.icon;
-
-      const info = document.createElement('div');
-      info.className = 'flex-1 min-w-0';
-
-      const lbl = document.createElement('p');
-      lbl.className = 'text-xs font-bold text-slate-700';
-      lbl.textContent = s.label;
-
-      const det = document.createElement('p');
-      det.id = `dynDetail${i}`;
-      det.className = 'text-[11px] text-slate-400 mt-0.5';
-      det.textContent = i === 0 ? s.detail : '待機中';
-
-      info.appendChild(lbl);
-      info.appendChild(det);
-      row.appendChild(iconEl);
-      row.appendChild(info);
-
-      if (i === 0) {
-        const sp = document.createElement('div');
-        sp.id = `dynSpin${i}`;
-        sp.className = 'step-spinner';
-        row.appendChild(sp);
-      } else {
-        const st = document.createElement('span');
-        st.id = `dynStatus${i}`;
-        st.className = 'text-base flex-shrink-0';
-        st.textContent = '⏳';
-        row.appendChild(st);
-      }
-
-      container.appendChild(row);
-    });
-
-    runDynSteps(stepsData);
-  }
-
-  async function runDynSteps(stepsData) {
-    for (let i = 0; i < stepsData.length; i++) {
-      if (state.abortCollect) return;
-      await activateDynStep(i, stepsData[i]);
-    }
-    if (state.abortCollect) return;
-
-    await sleep(500);
-    state.collecting = false;
-    setCollectBtnsDisabled(false);
-    showPage('pageReview');
-    updateCharCount();
-    showToast('✓ データ収集・報告文生成が完了しました');
-  }
-
-  function activateDynStep(i, s) {
-    return new Promise(resolve => {
-      const el  = document.getElementById(`dynStep${i}`);
-      const det = document.getElementById(`dynDetail${i}`);
-      const stat = document.getElementById(`dynStatus${i}`);
-
-      el.classList.remove('bg-slate-50','border-slate-200');
-      el.classList.add('bg-blue-50','border-blue-200');
-      det.textContent = s.detail;
-
-      if (!document.getElementById(`dynSpin${i}`) && stat) {
-        stat.textContent = '';
-        const sp = document.createElement('div');
-        sp.id = `dynSpin${i}`;
-        sp.className = 'step-spinner';
-        el.appendChild(sp);
-      }
-
-      setTimeout(() => {
-        if (state.abortCollect) { resolve(); return; }
-        el.classList.remove('bg-blue-50','border-blue-200');
-        el.classList.add('bg-green-50','border-green-200');
-        det.textContent = s.done;
-        const sp = document.getElementById(`dynSpin${i}`);
-        if (sp) sp.remove();
-        if (stat) stat.textContent = '✅';
-        resolve();
-      }, 900 + Math.random() * 600);
-    });
-  }
-
-  function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
-
-  // ══════════════════════
-  // 送信確認モーダル（修正③）
-  // ══════════════════════
-  function openSendConfirm() {
-    const text = document.getElementById('reportText').value.trim();
-    if (!text) { showToast('⚠ 報告文が空です'); return; }
-
-    const email   = document.getElementById('footerEmail').textContent.replace('✉ ', '');
-    const subject = document.getElementById('headerSubtitle').textContent || state.emailSubject;
-    const preview = text.slice(0, 200) + (text.length > 200 ? '…' : '');
-
-    // textContentでセット（XSS対策）
-    document.getElementById('confirmEmail').textContent   = email;
-    document.getElementById('confirmSubject').textContent = 'Re: ' + subject;
-    document.getElementById('confirmPreview').textContent = preview;
-
-    const modal = document.getElementById('sendConfirmModal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    trapFocus(modal);
-  }
-
-  function closeSendConfirm() {
-    const modal = document.getElementById('sendConfirmModal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-  }
-
-  function executeSend() {
-    if (state.sending) return;   // 送信連打ガード
-    state.sending = true;
-
-    // 送信ボタンを無効化
-    const sendBtn = document.querySelector('[onclick="openSendConfirm()"]');
-    if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '送信中…'; }
-
-    closeSendConfirm();
-    const email = document.getElementById('footerEmail').textContent;
-    showToast('✓ ' + email.replace('✉ ', '') + ' へ送信しました');
-
-    setTimeout(() => {
-      state.sending = false;
-      if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '送信する \u00a0→'; }
-      showPage('pageStandby');
-      document.getElementById('headerSubtitle').classList.add('hidden');
-      document.getElementById('headerCollectBtn').classList.add('hidden');
-      document.getElementById('headerCollectBtn').classList.remove('flex');
-      // 送信完了後のみ週をリセット（意図的な完了なので今週に戻す）
-      weekOffset = 0;
-      updateWeekDisplay();
-    }, 3000);
-  }
-
-  // ══════════════════════
-  // 設定モーダル
-  // ══════════════════════
-  function openSettings() {
-    const bp = document.getElementById('bossEmailPrefix');
-    if (bp) document.getElementById('modalBossPrefix').value = bp.value;
-    const es = document.getElementById('emailSubject');
-    if (es) document.getElementById('modalEmailSubject').value = es.value;
-    renderAllTags();
-    const modal = document.getElementById('settingsModal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
-    trapFocus(modal);
-  }
-
-  function closeSettings() {
-    const modal = document.getElementById('settingsModal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-  }
-
-  function saveSettings() {
-    const prefix  = document.getElementById('modalBossPrefix').value.trim();
-    const domain  = document.getElementById('modalEmailDomain').value.trim();
-    const subject = document.getElementById('modalEmailSubject').value.trim();
-    if (state.redmineProjects.length === 0) { showToast('⚠ Redmineプロジェクトを1つ以上入力してください'); return; }
-    if (!prefix || !domain)  { showToast('⚠ メールアドレスを入力してください'); return; }
-    if (!subject)            { showToast('⚠ トリガーメール件名を入力してください'); return; }
-
-    state.emailSubject = subject;
-    const bp = document.getElementById('bossEmailPrefix');
-    if (bp) bp.value = prefix;
-    const es = document.getElementById('emailSubject');
-    if (es) es.value = subject;
-    const dd = document.getElementById('domainDisplay');
-    if (dd) dd.textContent = domain;
-    document.getElementById('footerEmail').textContent = '✉ ' + prefix + domain;
-
-    closeSettings();
-    showToast(`✓ 設定保存 — Redmine: ${state.redmineProjects.length}件 / OneNote: ${state.oneNoteNotebooks.length}件`);
-  }
-
-  // ══════════════════════
-  // headerCollectBtn の表示制御ヘルパー
-  // ══════════════════════
-  function showHeaderCollectBtn() {
-    const btn = document.getElementById('headerCollectBtn');
-    btn.classList.remove('hidden');
-    btn.classList.add('flex');
-  }
-  function hideHeaderCollectBtn() {
-    const btn = document.getElementById('headerCollectBtn');
-    btn.classList.add('hidden');
-    btn.classList.remove('flex');
-  }
-  function cancelCollect() {
-    if (!state.collecting) return;
-    openConfirmModal(
-      '収集を中断しますか？',
-      '取得済みのデータは破棄されます。',
-      'danger',
-      () => {
-        state.abortCollect = true;
-        state.collecting = false;
-        setCollectBtnsDisabled(false);
-        showPage('pageStandby');
-        document.getElementById('headerSubtitle').classList.add('hidden');
-        document.getElementById('headerCollectBtn').classList.add('hidden');
-        document.getElementById('headerCollectBtn').classList.remove('flex');
-        // weekOffset はリセットしない（選んだ週を保持）
-        showToast('収集を中断しました');
-      }
-    );
-  }
-
-  // ══════════════════════
-  // キャンセル（レビュー画面）
-  // ══════════════════════
-  function handleCancel() {
-    openConfirmModal(
-      'レビューをキャンセルしますか？',
-      '報告は送信されません。',
-      'default',
-      () => {
-        showPage('pageStandby');
-        document.getElementById('headerSubtitle').classList.add('hidden');
-        document.getElementById('headerCollectBtn').classList.add('hidden');
-        document.getElementById('headerCollectBtn').classList.remove('flex');
-        // weekOffset はリセットしない（選んだ週を保持）
-        showToast('キャンセルしました');
-      }
-    );
-  }
-
-  // ══════════════════════
-  // 汎用確認モーダル（confirm() の置き換え）
-  // ══════════════════════
-  let _confirmCallback = null;
-
-  function openConfirmModal(title, msg, variant, onOk) {
-    _confirmCallback = onOk;
-    document.getElementById('confirmModalTitle').textContent = title;
-    document.getElementById('confirmModalMsg').textContent   = msg;
-
-    const okBtn = document.getElementById('confirmModalOk');
-    okBtn.className = variant === 'danger'
-      ? 'text-sm font-bold text-white bg-red-600 hover:bg-red-700 px-5 py-2 rounded-lg transition'
-      : 'text-sm font-bold text-white bg-navy hover:bg-navy-light px-5 py-2 rounded-lg transition';
-    okBtn.textContent = variant === 'danger' ? '中断する' : 'キャンセルする';
-
+  // ══════════════════════════════════════
+  // 確認モーダル
+  // ══════════════════════════════════════
+  function openConfirmModal(title, body, variant, cb) {
+    document.getElementById('confirmTitle').textContent = title;
+    document.getElementById('confirmBody').textContent  = body;
+    const okBtn = document.getElementById('confirmOkBtn');
+    okBtn.textContent  = variant === 'danger' ? '中断する' : '実行する';
+    okBtn.className    = 'flex-1 text-white text-sm font-bold py-2.5 rounded-xl transition '
+      + (variant === 'danger' ? 'bg-red-500 hover:bg-red-400' : 'bg-navy hover:opacity-90');
+    state._confirmCb = cb;
     const modal = document.getElementById('confirmModal');
-    modal.classList.remove('hidden');
-    modal.classList.add('flex');
+    modal.classList.remove('hidden'); modal.classList.add('flex');
     trapFocus(modal);
   }
 
   function closeConfirmModal() {
     const modal = document.getElementById('confirmModal');
-    modal.classList.add('hidden');
-    modal.classList.remove('flex');
-    _confirmCallback = null;
+    modal.classList.add('hidden'); modal.classList.remove('flex');
+    state._confirmCb = null;
   }
 
-  document.getElementById('confirmModalOk').addEventListener('click', () => {
-    const cb = _confirmCallback;
+  document.getElementById('confirmOkBtn').addEventListener('click', () => {
+    const cb = state._confirmCb;
     closeConfirmModal();
     if (cb) cb();
   });
-  document.getElementById('confirmModalCancel').addEventListener('click', closeConfirmModal);
-  document.getElementById('confirmModal').addEventListener('click', function(e) {
-    if (e.target === this) closeConfirmModal();
-  });
 
-  // ══════════════════════
+  // ══════════════════════════════════════
   // フォーカストラップ
-  // ══════════════════════
-  function getFocusable(el) {
-    return [...el.querySelectorAll(
-      'a[href],button:not([disabled]),textarea:not([disabled]),input:not([disabled]),select:not([disabled]),[tabindex]:not([tabindex="-1"])'
-    )];
-  }
-
+  // ══════════════════════════════════════
   function trapFocus(modal) {
-    const focusable = getFocusable(modal);
-    if (focusable.length) focusable[0].focus();
-
-    function handler(e) {
+    const focusable = modal.querySelectorAll('button, input, textarea, select, [tabindex]:not([tabindex="-1"])');
+    if (!focusable.length) return;
+    focusable[0].focus();
+    modal.addEventListener('keydown', function handler(e) {
       if (e.key !== 'Tab') return;
-      if (!modal.classList.contains('flex')) { modal.removeEventListener('keydown', handler); return; }
-      const first = focusable[0];
-      const last  = focusable[focusable.length - 1];
-      if (e.shiftKey) {
-        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
-      } else {
-        if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
+      const first = focusable[0], last = focusable[focusable.length - 1];
+      if (e.shiftKey ? document.activeElement === first : document.activeElement === last) {
+        e.preventDefault();
+        (e.shiftKey ? last : first).focus();
       }
-    }
-    modal.addEventListener('keydown', handler);
+      if (!modal.classList.contains('flex')) modal.removeEventListener('keydown', handler);
+    });
   }
 
-  // ══════════════════════
   // Escape キーでモーダルを閉じる
-  // ══════════════════════
   document.addEventListener('keydown', e => {
     if (e.key !== 'Escape') return;
-    if (!document.getElementById('confirmModal').classList.contains('hidden'))    closeConfirmModal();
-    if (!document.getElementById('settingsModal').classList.contains('hidden'))   closeSettings();
-    if (!document.getElementById('sendConfirmModal').classList.contains('hidden')) closeSendConfirm();
+    if (document.getElementById('settingsModal').classList.contains('flex')) closeSettings();
+    if (document.getElementById('confirmModal').classList.contains('flex'))  closeConfirmModal();
   });
 
-  // オーバーレイクリックで閉じる
-  document.getElementById('settingsModal').addEventListener('click', function(e) {
-    if (e.target === this) closeSettings();
-  });
-  document.getElementById('sendConfirmModal').addEventListener('click', function(e) {
-    if (e.target === this) closeSendConfirm();
-  });
-
-  // ══════════════════════
-  // トースト
-  // ══════════════════════
+  // ══════════════════════════════════════
+  // Toast
+  // ══════════════════════════════════════
   function showToast(msg) {
     const t = document.getElementById('toast');
     t.textContent = msg;
@@ -1064,13 +782,8 @@
     setTimeout(() => t.classList.remove('show'), 3000);
   }
 
-  // ══════════════════════
   // 初期化
-  // ══════════════════════
-  renderAllTags();
-  updateWeekDisplay();
-  updateCharCount();
-  showPage('pageStandby');
+  updateStandbySummary();
 </script>
 </body>
 </html>
