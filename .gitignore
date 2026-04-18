@@ -12,5 +12,6 @@ __pycache__/
 *.pyo
 .venv/
 venv/
+*.egg-info/
 # Microsoft 認証キャッシュ（秘密情報）
 .msal_token_cache.json

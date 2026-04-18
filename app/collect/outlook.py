@@ -1,6 +1,4 @@
-"""
-Microsoft Graph API から上司の週次報告メールを検索する
-"""
+from __future__ import annotations
 
 import logging
 import urllib.parse
