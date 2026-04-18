@@ -1,0 +1,75 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths:
+      - 'docs/**'
+      - 'templates/**'
+
+  # 手動実行も可能にする
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# 同時デプロイは1つだけ許可
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: リポジトリをチェックアウト
+        uses: actions/checkout@v4
+
+      # templates/review.html の最新を docs/index.html に同期
+      - name: HTMLを同期
+        run: |
+          cp templates/review.html docs/index.html
+          # タイトルをデモ用に変更
+          sed -i 's|<title>週次報告レビュー</title>|<title>週次報告自動化ツール — デモ</title>|g' docs/index.html
+          # デモバナーを挿入（HEADERコメントの直前）
+          python3 - <<'PYEOF'
+          with open('docs/index.html', 'r') as f:
+              content = f.read()
+
+          banner = '''<!-- ════════════════════════
+       デモバナー（公開用）
+  ════════════════════════ -->
+  <div class="bg-amber-400 text-amber-900 text-xs font-bold text-center py-2 px-4 flex-shrink-0 flex items-center justify-center gap-2">
+    <span>⚠</span>
+    <span>これはUIサンプルデモです。外部APIへの接続はなく、実データは送受信されません。</span>
+    <span>⚠</span>
+  </div>
+
+  '''
+          marker = '<!-- ════════════════════════\n     HEADER\n════════════════════════ -->'
+          if marker in content and 'デモバナー' not in content:
+              content = content.replace(marker, banner + marker)
+              with open('docs/index.html', 'w') as f:
+                  f.write(content)
+          PYEOF
+
+      - name: GitHub Pages のセットアップ
+        uses: actions/configure-pages@v5
+
+      - name: docs フォルダをアップロード
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: docs/
+
+      - name: デプロイ
+        id: deployment
+        uses: actions/deploy-pages@v4
