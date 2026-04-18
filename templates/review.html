@@ -422,6 +422,11 @@
       return;
     }
     if (!res.ok) {
+      // 404/405 はFlask未起動（デモ環境）→ モックで動作
+      if (res.status === 404 || res.status === 405) {
+        runDynStepsMock(stepsData);
+        return;
+      }
       showToast('⚠ 収集の開始に失敗しました: ' + res.status);
       state.collecting = false;
       setCollectBtnsDisabled(false);
