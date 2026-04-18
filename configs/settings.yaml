@@ -1,0 +1,28 @@
+# デフォルト設定値
+# .env の値が優先されます
+
+# 対象 Redmine プロジェクト名（カンマ区切り）
+redmine_projects:
+  - my-team
+
+# 対象 OneNote ノートブック名（カンマ区切り）
+onenote_notebooks:
+  - 引き継ぎ
+
+# 対象 OneNote セクション名
+onenote_sections:
+  - TODO
+  - 日報
+
+# レポート生成モデル
+# GitHub Models で利用可能なモデル名を指定
+# 例: gpt-4o, gpt-4o-mini, Meta-Llama-3.1-70B-Instruct
+ai_model: gpt-4o-mini
+
+# Flask サーバーポート
+flask_port: 5000
+
+# 実行モード
+# interactive: ローカルで Flask を起動してブラウザでレビュー
+# draft:       GitHub Actions でドラフトメールを Outlook に保存
+mode: interactive

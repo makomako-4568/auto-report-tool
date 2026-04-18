@@ -538,7 +538,32 @@
     collecting:       false,
     abortCollect:     false,
     sending:          false,   // 送信連打ガード
+    _sseSource:       null,    // EventSource（SSE接続）
   };
+
+  // Flask 起動時にサーバーの設定値でデフォルトを上書き
+  fetch('/api/config')
+    .then(r => r.ok ? r.json() : null)
+    .then(cfg => {
+      if (!cfg) return;
+      if (cfg.redmineProjects?.length)   state.redmineProjects  = cfg.redmineProjects;
+      if (cfg.oneNoteNotebooks?.length)  state.oneNoteNotebooks = cfg.oneNoteNotebooks;
+      if (cfg.bossEmailSubject)          state.emailSubject      = cfg.bossEmailSubject;
+      if (cfg.bossEmail) {
+        const [prefix] = cfg.bossEmail.split('@');
+        const domain   = '@' + cfg.bossEmail.split('@')[1];
+        const pfx = document.getElementById('bossEmailPrefix');
+        const dom = document.getElementById('modalEmailDomain');
+        if (pfx) pfx.value = prefix;
+        if (dom) dom.value = domain;
+      }
+      if (cfg.bossEmailSubject) {
+        const el = document.getElementById('emailSubject');
+        if (el) el.value = cfg.bossEmailSubject;
+      }
+      renderAllTags();
+    })
+    .catch(() => { /* Flask未起動時はデフォルト値のまま使う */ });
 
   // ══════════════════════
   // タグ入力（XSS修正：textContentで構築）
@@ -714,7 +739,7 @@
       { icon: '🔴', label: 'Redmine チケット取得',  detail: `${redmineLabel} のチームチケットを取得中…`, done: `${state.redmineProjects.length}プロジェクト 取得完了` },
       { icon: '🟣', label: 'OneNote TODO 取得',      detail: `${oneNoteLabel} の TODO セクションを取得中…`, done: 'TODOリスト 取得完了' },
       { icon: '🟣', label: 'OneNote 日報 取得',      detail: `${oneNoteLabel} の日報ページを取得中…`,      done: '今週分の日報 取得完了' },
-      { icon: '🔵', label: 'Claude AI で報告文生成', detail: 'データを解析・報告文を生成中…',               done: '報告文の生成完了' },
+      { icon: '🔵', label: 'AI でレポート生成',      detail: 'データを解析・報告文を生成中…',               done: '報告文の生成完了' },
     ];
 
     const container = document.getElementById('stepsContainer');
@@ -763,53 +788,150 @@
       container.appendChild(row);
     });
 
-    runDynSteps(stepsData);
+    startRealCollect(stepsData);
   }
 
-  async function runDynSteps(stepsData) {
+  // ══════════════════════
+  // 実 API 接続：収集 → SSE → レビュー表示
+  // ══════════════════════
+  async function startRealCollect(stepsData) {
+    // --- バックエンドへ収集開始リクエスト ---
+    let res;
+    try {
+      res = await fetch('/api/collect', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ weekOffset }),
+      });
+    } catch (e) {
+      // Flask 未起動時はモックで動作（デモ用フォールバック）
+      runDynStepsMock(stepsData);
+      return;
+    }
+    if (!res.ok) {
+      showToast('⚠ 収集の開始に失敗しました: ' + res.status);
+      state.collecting = false;
+      setCollectBtnsDisabled(false);
+      showPage('pageStandby');
+      return;
+    }
+
+    // --- SSE で進捗を受信 ---
+    const source = new EventSource('/api/stream');
+    state._sseSource = source;
+
+    source.addEventListener('step', e => {
+      const d = JSON.parse(e.data);
+      const idx = d.step - 1;
+      _stepActivate(idx, stepsData[idx]);
+    });
+
+    source.addEventListener('step_done', e => {
+      const d = JSON.parse(e.data);
+      _stepDone(d.step - 1, stepsData[d.step - 1]);
+    });
+
+    source.addEventListener('done', e => {
+      source.close();
+      state._sseSource = null;
+      const d = JSON.parse(e.data);
+      // レポートをテキストエリアにセット
+      const ta = document.getElementById('reportText');
+      if (ta) ta.value = d.report || '';
+      updateCharCount();
+      state.collecting = false;
+      setCollectBtnsDisabled(false);
+      showPage('pageReview');
+      showToast('✓ データ収集・報告文生成が完了しました');
+    });
+
+    source.addEventListener('cancelled', e => {
+      source.close();
+      state._sseSource = null;
+      state.collecting = false;
+      setCollectBtnsDisabled(false);
+      showPage('pageStandby');
+      document.getElementById('headerSubtitle').classList.add('hidden');
+      document.getElementById('headerCollectBtn').classList.add('hidden');
+      document.getElementById('headerCollectBtn').classList.remove('flex');
+      showToast('収集を中断しました');
+    });
+
+    source.addEventListener('error', e => {
+      let msg = '収集中にエラーが発生しました';
+      try { msg = JSON.parse(e.data).message || msg; } catch (_) {}
+      source.close();
+      state._sseSource = null;
+      state.collecting = false;
+      setCollectBtnsDisabled(false);
+      showPage('pageStandby');
+      showToast('⚠ ' + msg);
+    });
+
+    source.onerror = () => {
+      if (source.readyState === EventSource.CLOSED) return;
+      source.close();
+      state._sseSource = null;
+      if (state.collecting) {
+        state.collecting = false;
+        setCollectBtnsDisabled(false);
+        showPage('pageStandby');
+        showToast('⚠ サーバーとの接続が切れました');
+      }
+    };
+  }
+
+  // ── ステップ UI ヘルパー ──
+  function _stepActivate(i, s) {
+    const el   = document.getElementById(`dynStep${i}`);
+    const det  = document.getElementById(`dynDetail${i}`);
+    const stat = document.getElementById(`dynStatus${i}`);
+    if (!el) return;
+    el.classList.replace('bg-slate-50', 'bg-blue-50');
+    el.classList.replace('border-slate-200', 'border-blue-200');
+    if (det) det.textContent = s.detail;
+    if (!document.getElementById(`dynSpin${i}`) && stat) {
+      stat.textContent = '';
+      const sp = document.createElement('div');
+      sp.id = `dynSpin${i}`;
+      sp.className = 'step-spinner';
+      el.appendChild(sp);
+    }
+  }
+
+  function _stepDone(i, s) {
+    const el  = document.getElementById(`dynStep${i}`);
+    const det = document.getElementById(`dynDetail${i}`);
+    const stat = document.getElementById(`dynStatus${i}`);
+    const sp  = document.getElementById(`dynSpin${i}`);
+    if (!el) return;
+    el.classList.replace('bg-blue-50', 'bg-green-50');
+    el.classList.replace('border-blue-200', 'border-green-200');
+    if (det) det.textContent = s.done;
+    if (sp) sp.remove();
+    if (stat) stat.textContent = '✅';
+  }
+
+  // Flask 未起動時のデモ用モック（デモ画面専用）
+  async function runDynStepsMock(stepsData) {
     for (let i = 0; i < stepsData.length; i++) {
       if (state.abortCollect) return;
-      await activateDynStep(i, stepsData[i]);
+      await new Promise(resolve => {
+        _stepActivate(i, stepsData[i]);
+        setTimeout(() => {
+          if (state.abortCollect) { resolve(); return; }
+          _stepDone(i, stepsData[i]);
+          resolve();
+        }, 900 + Math.random() * 600);
+      });
     }
     if (state.abortCollect) return;
-
-    await sleep(500);
+    await new Promise(r => setTimeout(r, 500));
     state.collecting = false;
     setCollectBtnsDisabled(false);
     showPage('pageReview');
     updateCharCount();
-    showToast('✓ データ収集・報告文生成が完了しました');
-  }
-
-  function activateDynStep(i, s) {
-    return new Promise(resolve => {
-      const el  = document.getElementById(`dynStep${i}`);
-      const det = document.getElementById(`dynDetail${i}`);
-      const stat = document.getElementById(`dynStatus${i}`);
-
-      el.classList.remove('bg-slate-50','border-slate-200');
-      el.classList.add('bg-blue-50','border-blue-200');
-      det.textContent = s.detail;
-
-      if (!document.getElementById(`dynSpin${i}`) && stat) {
-        stat.textContent = '';
-        const sp = document.createElement('div');
-        sp.id = `dynSpin${i}`;
-        sp.className = 'step-spinner';
-        el.appendChild(sp);
-      }
-
-      setTimeout(() => {
-        if (state.abortCollect) { resolve(); return; }
-        el.classList.remove('bg-blue-50','border-blue-200');
-        el.classList.add('bg-green-50','border-green-200');
-        det.textContent = s.done;
-        const sp = document.getElementById(`dynSpin${i}`);
-        if (sp) sp.remove();
-        if (stat) stat.textContent = '✅';
-        resolve();
-      }, 900 + Math.random() * 600);
-    });
+    showToast('✓ データ収集・報告文生成が完了しました（デモ）');
   }
 
   function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
@@ -851,20 +973,34 @@
     if (sendBtn) { sendBtn.disabled = true; sendBtn.textContent = '送信中…'; }
 
     closeSendConfirm();
-    const email = document.getElementById('footerEmail').textContent;
-    showToast('✓ ' + email.replace('✉ ', '') + ' へ送信しました');
 
-    setTimeout(() => {
+    const reportText = document.getElementById('reportText').value.trim();
+
+    fetch('/api/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ report: reportText }),
+    })
+    .then(res => res.ok ? res.json() : res.json().then(d => Promise.reject(d.error || '送信失敗')))
+    .then(() => {
+      const email = document.getElementById('footerEmail').textContent;
+      showToast('✓ ' + email.replace('✉ ', '') + ' へ送信しました');
+      setTimeout(() => {
+        state.sending = false;
+        if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '送信する \u00a0→'; }
+        showPage('pageStandby');
+        document.getElementById('headerSubtitle').classList.add('hidden');
+        document.getElementById('headerCollectBtn').classList.add('hidden');
+        document.getElementById('headerCollectBtn').classList.remove('flex');
+        weekOffset = 0;
+        updateWeekDisplay();
+      }, 3000);
+    })
+    .catch(errMsg => {
+      showToast('⚠ ' + (typeof errMsg === 'string' ? errMsg : '送信中にエラーが発生しました'));
       state.sending = false;
       if (sendBtn) { sendBtn.disabled = false; sendBtn.textContent = '送信する \u00a0→'; }
-      showPage('pageStandby');
-      document.getElementById('headerSubtitle').classList.add('hidden');
-      document.getElementById('headerCollectBtn').classList.add('hidden');
-      document.getElementById('headerCollectBtn').classList.remove('flex');
-      // 送信完了後のみ週をリセット（意図的な完了なので今週に戻す）
-      weekOffset = 0;
-      updateWeekDisplay();
-    }, 3000);
+    });
   }
 
   // ══════════════════════
@@ -929,6 +1065,9 @@
       '取得済みのデータは破棄されます。',
       'danger',
       () => {
+        // SSE を閉じてバックエンドにキャンセルを通知
+        if (state._sseSource) { state._sseSource.close(); state._sseSource = null; }
+        fetch('/api/collect', { method: 'DELETE' }).catch(() => {});
         state.abortCollect = true;
         state.collecting = false;
         setCollectBtnsDisabled(false);

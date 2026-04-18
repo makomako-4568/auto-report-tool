@@ -1,0 +1,27 @@
+# Web サーバー
+flask>=3.0.0
+flask-cors>=4.0.0
+
+# Microsoft 認証・Graph API
+msal>=1.28.0
+requests>=2.31.0
+
+# OneNote HTML パース
+beautifulsoup4>=4.12.0
+lxml>=5.0.0
+
+# GitHub Models API（OpenAI 互換）
+openai>=1.30.0
+
+# トークン数カウント
+tiktoken>=0.7.0
+
+# 設定ファイル
+python-dotenv>=1.0.0
+pyyaml>=6.0.1
+
+# APIキーのOS安全保存
+keyring>=25.0.0
+
+# 型ヒント補助
+typing-extensions>=4.10.0
