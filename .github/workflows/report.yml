@@ -1,11 +1,11 @@
-name: 週次報告 自動ドラフト生成
+name: 毎朝タスク整理 自動ダッシュボード生成
 
 on:
-  # 毎週金曜 17:00（JST = UTC+9）に自動実行
+  # 平日（月〜金）毎朝 8:00 JST（= UTC 23:00 前日）に自動実行
   schedule:
-    - cron: '0 8 * * 5'
+    - cron: '0 23 * * 0-4'
 
-  # 手動実行も可能
+  # GitHub の Actions タブから手動実行ボタンで起動可能
   workflow_dispatch:
     inputs:
       week_offset:
@@ -15,7 +15,7 @@ on:
         type: number
 
 jobs:
-  generate-draft:
+  generate-dashboard:
     runs-on: ubuntu-latest
 
     steps:
@@ -31,15 +31,15 @@ jobs:
       - name: 依存パッケージをインストール
         run: pip install -r requirements.txt
 
-      - name: 週次報告ドラフトを生成・保存
+      - name: タスク整理ダッシュボードを生成・Outlookに下書き保存
         env:
-          MS_TENANT_ID:         ${{ secrets.MS_TENANT_ID }}
-          MS_CLIENT_ID:         ${{ secrets.MS_CLIENT_ID }}
-          MS_CLIENT_SECRET:     ${{ secrets.MS_CLIENT_SECRET }}
-          REDMINE_URL:          ${{ secrets.REDMINE_URL }}
-          REDMINE_API_KEY:      ${{ secrets.REDMINE_API_KEY }}
-          GITHUB_TOKEN:         ${{ secrets.GITHUB_TOKEN }}
-          BOSS_EMAIL:           ${{ secrets.BOSS_EMAIL }}
-          BOSS_EMAIL_SUBJECT:   ${{ secrets.BOSS_EMAIL_SUBJECT }}
-          WEEK_OFFSET:          ${{ inputs.week_offset || '0' }}
+          MS_TENANT_ID:       ${{ secrets.MS_TENANT_ID }}
+          MS_CLIENT_ID:       ${{ secrets.MS_CLIENT_ID }}
+          MS_CLIENT_SECRET:   ${{ secrets.MS_CLIENT_SECRET }}
+          REDMINE_URL:        ${{ secrets.REDMINE_URL }}
+          REDMINE_API_KEY:    ${{ secrets.REDMINE_API_KEY }}
+          GITHUB_TOKEN:       ${{ secrets.GITHUB_TOKEN }}
+          BOSS_EMAIL:         ${{ secrets.BOSS_EMAIL }}
+          BOSS_EMAIL_SUBJECT: ${{ secrets.BOSS_EMAIL_SUBJECT }}
+          WEEK_OFFSET:        ${{ inputs.week_offset || '0' }}
         run: python scripts/generate_draft.py
